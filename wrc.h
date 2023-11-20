@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 
 #define ARRAY_LEN(x) sizeof((x))/sizeof((x)[0])
 
@@ -16,7 +17,7 @@ char *wrc_format(const char *, ...);
 
 #endif // WRC_H
 
-#ifdef WRC_IMPL
+#ifndef WRC_IMPL
 
 void todo(FILE *f, const char *text, int code) {
     fprintf((f != NULL) ? f : stderr, text, 0);
