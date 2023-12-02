@@ -4,7 +4,13 @@
 #include <wrc.h>
 
 int main(void) {
-    printf("TEST IFc\n");
+    if (geteuid())
+        panic("Please run program with sudo");
+
+    wrc_get_ifcs();
+
+    logf("geteuid() return %d", geteuid());
+    logf("getuid() return %d", getuid());
 
     return 0;
 }
