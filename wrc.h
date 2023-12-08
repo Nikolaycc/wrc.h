@@ -53,37 +53,42 @@
 
 typedef struct {
     char name[MAX_IFNAME];
-    size_t mtu;
-    uint8_t flag;
-} wrc_ifc; 
+    uint32_t flag;
+    int family;
+    char addr[NI_MAXHOST], netmask[NI_MAXHOST];
+    struct rtnl_link_stats *stats;
+} wrc_ifc;
 
 typedef struct {
     wrc_ifc ifc[MAX_IFACE];
     size_t len;
-} wrc_ifc_list; 
+} wrc_ifc_list;
 
 void todo(FILE *, const char *, int);
 char *wrc_format(const char *, ...);
 
-void wrc_get_ifcs();
+void wrc_ifc_init(wrc_ifc_list *);
+void wrc_get_ifcs(wrc_ifc_list *);
+void wrc_print_ifalist(const wrc_ifc_list);
 
 #endif // WRC_H
 
 #ifdef WRC_IMPL
 
-void wrc_get_ifcs() {
+void wrc_ifc_init(wrc_ifc_list *ifc) {
+    ifc->len = 0;
+    memset(ifc->ifc, 0, MAX_IFACE);
+}
+
+void wrc_get_ifcs(wrc_ifc_list *ifc) {
     struct ifaddrs *ifaddr;
     int family, s;
-    char host[NI_MAXHOST];
-    logf("NI_MAXHOST %d", NI_MAXHOST);
-    
+    char host[NI_MAXHOST], nhost[NI_MAXHOST];
+
     if (getifaddrs(&ifaddr) == -1) {
         perror("getifaddrs");
         exit(EXIT_FAILURE);
     }
-
-    /* Walk through linked list, maintaining head pointer so we
-    can free list later. */
 
     for (struct ifaddrs *ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
         if (ifa->ifa_addr == NULL)
@@ -91,38 +96,51 @@ void wrc_get_ifcs() {
 
         family = ifa->ifa_addr->sa_family;
 
-        /* Display interface name and family (including symbolic
-        form of the latter for the common families). */
-
-        logf("%-8s %s (%d)", ifa->ifa_name,
-        (family == AF_PACKET) ? "AF_PACKET" :
-        (family == AF_INET) ? "AF_INET" :
-        (family == AF_INET6) ? "AF_INET6" : "???",
-        family);
-
-        /* For an AF_INET* interface address, display the address. */
+        wrc_ifc lifc = {0};
+        lifc.family = family;
+        strcpy(lifc.name, ifa->ifa_name);
 
         if (family == AF_INET || family == AF_INET6) {
-            s = getnameinfo(ifa->ifa_addr, (family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6), host, NI_MAXHOST,
+            s = getnameinfo(ifa->ifa_addr, (family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6), lifc.addr, NI_MAXHOST,
             NULL, 0, NI_NUMERICHOST);
             if (s != 0) {
                 logf("getnameinfo() failed: %s\n", gai_strerror(s));
                 exit(EXIT_FAILURE);
             }
-            
-            logf("address: <%s>", host);
-            
-        } else if (family == AF_PACKET && ifa->ifa_data != NULL) {
-            struct rtnl_link_stats *stats = ifa->ifa_data;
 
-            logf("tx_packets = %10u; rx_packets = %10u\n"
-            "\ttx_bytes   = %10u; rx_bytes   = %10u",
-            stats->tx_packets, stats->rx_packets,
-            stats->tx_bytes, stats->rx_bytes);
+            int n = getnameinfo(ifa->ifa_netmask, (family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6), lifc.netmask, NI_MAXHOST,
+            NULL, 0, NI_NUMERICHOST);
+            if (n != 0) {
+                logf("getnameinfo() failed: %s\n", gai_strerror(n));
+                exit(EXIT_FAILURE);
+            }
+
+        } else if (family == AF_PACKET && ifa->ifa_data != NULL) {
+            lifc.stats = ifa->ifa_data;
         }
+        ifc->ifc[ifc->len] = lifc;
+        ifc->len++;
     }
 
     freeifaddrs(ifaddr);
+}
+
+void wrc_print_ifalist(const wrc_ifc_list ifalist) {
+    for (int i = 0; i < ifalist.len; i++) {
+        printf("ifalist.ifc[%d] = {\n", i);
+        printf("\t.name = %s\n", ifalist.ifc[i].name);
+        printf("\t.family = %d\n", ifalist.ifc[i].family);
+        if (ifalist.ifc[i].family == AF_INET || ifalist.ifc[i].family == AF_INET6) {
+            printf("\t.addr = %s\n", ifalist.ifc[i].addr);
+            printf("\t.netmask = %s\n", ifalist.ifc[i].netmask);
+        } else if(ifalist.ifc[i].family == AF_PACKET) {
+            printf("\t.stats->tx_packets = %10u\n\t.stats->rx_packets = %10u\n"
+            "\t.stats->ttx_bytes = %10u\n\t.stats->rx_bytes = %10u\n",
+            ifalist.ifc[i].stats->tx_packets, ifalist.ifc[i].stats->rx_packets,
+            ifalist.ifc[i].stats->tx_bytes, ifalist.ifc[i].stats->rx_bytes);
+        }
+        printf("}\n");
+    }
 }
 
 void todo(FILE *f, const char *text, int code) {
