@@ -9,26 +9,26 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <sys/types.h>
-#include <ifaddrs.h>
 
+#include <arpa/inet.h>
+#include <sys/socket.h>
 #include <netdb.h>
 #include <linux/if_link.h>
+#include <ifaddrs.h>
+#include <netinet/in.h>
 
-#define panicf(_msg_, ...) { \
+#define panicf(_fmt_, ...) { \
     time_t t = time(NULL); \
     struct tm tm = *localtime(&t); \
-    fprintf(stderr, "\x1B[31mPANIC\x1B[0m [%02d:%02d:%02d] (%s:%d)\n  ->\t" _msg_ "\n", tm.tm_hour, tm.tm_min, tm.tm_sec, __FILE__, __LINE__, __VA_ARGS__); \
+    fprintf(stderr, "\x1B[31mPANIC\x1B[0m [%02d:%02d:%02d] (%s:%d)\n  ->\t" _fmt_ "\n", tm.tm_hour, tm.tm_min, tm.tm_sec, __FILE__, __LINE__, __VA_ARGS__); \
     exit(1); \
 }
 
-#define logf(_msg_, ...) { \
+#define logf(_fmt_, ...) { \
     time_t t = time(NULL); \
     struct tm tm = *localtime(&t); \
-    fprintf(stdout, "\x1B[34mLOG\x1B[0m [%02d:%02d:%02d] (%s:%d)\n  ->\t" _msg_ "\n", tm.tm_hour, tm.tm_min, tm.tm_sec, __FILE__, __LINE__, __VA_ARGS__); \
+    fprintf(stdout, "\x1B[34mLOG\x1B[0m [%02d:%02d:%02d] (%s:%d)\n  ->\t" _fmt_ "\n", tm.tm_hour, tm.tm_min, tm.tm_sec, __FILE__, __LINE__, __VA_ARGS__); \
 }
 
 #define panic(_msg_) { \
@@ -127,7 +127,7 @@ void wrc_get_ifcs(wrc_ifc_list *ifc) {
 
 void wrc_print_ifalist(const wrc_ifc_list ifalist) {
     for (int i = 0; i < ifalist.len; i++) {
-        printf("ifalist.ifc[%d] = {\n", i);
+        printf("\nifalist.ifc[%d] = (wrc_ifc) {\n", i);
         printf("\t.name = %s\n", ifalist.ifc[i].name);
         printf("\t.family = %d\n", ifalist.ifc[i].family);
         if (ifalist.ifc[i].family == AF_INET || ifalist.ifc[i].family == AF_INET6) {
