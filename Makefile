@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -I .
+CFLAGS = -ggdb -I .
 
 TESTSRC = test/ifc.c
 TESTCMD = $(CC) $(CFLAGS) -o bin/ifc test/ifc.c;
