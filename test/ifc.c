@@ -12,8 +12,11 @@ int main(void) {
 
     wrc_get_ifcs(&ifalist);
     logf("ifalist.len = %zu", ifalist.len);
-
+    
+    printf("%s\n", ifalist.ifc[0].addr);
+    
     wrc_print_ifalist(ifalist);
+    // wrc_print_ifa(ifalist, 0);
     
     // logf("geteuid() return %d", geteuid());
     // logf("getuid() return %d", getuid());
