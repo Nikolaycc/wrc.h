@@ -51,12 +51,20 @@
 #define MAX_IFNAME 32
 #define MAX_IFACE 16
 
+#define INET4 0b100
+#define INET6 0b010
+#define ISTATS 0b001
+
 typedef struct {
     char name[MAX_IFNAME];
-    uint32_t flag;
     int family;
     char addr[NI_MAXHOST], netmask[NI_MAXHOST];
+    char addr6[NI_MAXHOST], netmask6[NI_MAXHOST];
     struct rtnl_link_stats *stats;
+
+    unsigned int is_inet4:1;
+    unsigned int is_inet6:1;
+    unsigned int is_stats:1;
 } wrc_ifc;
 
 typedef struct {
@@ -70,6 +78,7 @@ char *wrc_format(const char *, ...);
 void wrc_ifc_init(wrc_ifc_list *);
 void wrc_get_ifcs(wrc_ifc_list *);
 void wrc_print_ifalist(const wrc_ifc_list);
+void wrc_print_ifa(const wrc_ifc_list, size_t);
 
 #endif // WRC_H
 
@@ -95,30 +104,56 @@ void wrc_get_ifcs(wrc_ifc_list *ifc) {
         continue;
 
         family = ifa->ifa_addr->sa_family;
+        wrc_ifc tmp = {0};
+        wrc_ifc* lifc = &tmp;
+        int inclen = 1;
+        
+        for (int v = 0; v < ifc->len; v++) {
+            if (strcmp(ifa->ifa_name, ifc->ifc[v].name) == 0) {
+                lifc = &ifc->ifc[v];
+                inclen = 0;
+            } 
+        }
+        
+        lifc->family = family;
+        strcpy(lifc->name, ifa->ifa_name);
 
-        wrc_ifc lifc = {0};
-        lifc.family = family;
-        strcpy(lifc.name, ifa->ifa_name);
-
-        if (family == AF_INET || family == AF_INET6) {
-            s = getnameinfo(ifa->ifa_addr, (family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6), lifc.addr, NI_MAXHOST,
+        if (family == AF_INET) {            
+            lifc->is_inet4 = 1;            
+            s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in), lifc->addr, NI_MAXHOST,
             NULL, 0, NI_NUMERICHOST);
             if (s != 0) {
                 logf("getnameinfo() failed: %s\n", gai_strerror(s));
                 exit(EXIT_FAILURE);
             }
 
-            int n = getnameinfo(ifa->ifa_netmask, (family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6), lifc.netmask, NI_MAXHOST,
+            int n = getnameinfo(ifa->ifa_netmask, sizeof(struct sockaddr_in), lifc->netmask, NI_MAXHOST,
             NULL, 0, NI_NUMERICHOST);
             if (n != 0) {
                 logf("getnameinfo() failed: %s\n", gai_strerror(n));
                 exit(EXIT_FAILURE);
             }
-
         } else if (family == AF_PACKET && ifa->ifa_data != NULL) {
-            lifc.stats = ifa->ifa_data;
+            lifc->is_stats = 1;
+            lifc->stats = ifa->ifa_data;
+        } else if (family == AF_INET6) {
+            lifc->is_inet6 = 1;
+            s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in6), lifc->addr6, NI_MAXHOST,
+            NULL, 0, NI_NUMERICHOST);
+            if (s != 0) {
+                logf("getnameinfo() failed: %s\n", gai_strerror(s));
+                exit(EXIT_FAILURE);
+            }
+
+            int n = getnameinfo(ifa->ifa_netmask, sizeof(struct sockaddr_in6), lifc->netmask6, NI_MAXHOST,
+            NULL, 0, NI_NUMERICHOST);
+            if (n != 0) {
+                logf("getnameinfo() failed: %s\n", gai_strerror(n));
+                exit(EXIT_FAILURE);
+            }
         }
-        ifc->ifc[ifc->len] = lifc;
+        ifc->ifc[ifc->len] = *(wrc_ifc*)lifc;
+        if (inclen)
         ifc->len++;
     }
 
@@ -130,10 +165,39 @@ void wrc_print_ifalist(const wrc_ifc_list ifalist) {
         printf("\nifalist.ifc[%d] = (wrc_ifc) {\n", i);
         printf("\t.name = %s\n", ifalist.ifc[i].name);
         printf("\t.family = %d\n", ifalist.ifc[i].family);
-        if (ifalist.ifc[i].family == AF_INET || ifalist.ifc[i].family == AF_INET6) {
+        if (ifalist.ifc[i].is_inet4) {
             printf("\t.addr = %s\n", ifalist.ifc[i].addr);
             printf("\t.netmask = %s\n", ifalist.ifc[i].netmask);
-        } else if(ifalist.ifc[i].family == AF_PACKET) {
+        }
+        if (ifalist.ifc[i].is_inet6) {
+            printf("\t.addr6 = %s\n", ifalist.ifc[i].addr6);
+            printf("\t.netmask6 = %s\n", ifalist.ifc[i].netmask6);
+        }
+        if (ifalist.ifc[i].is_stats) {
+            printf("\t.stats->tx_packets = %10u\n\t.stats->rx_packets = %10u\n"
+            "\t.stats->ttx_bytes = %10u\n\t.stats->rx_bytes = %10u\n",
+            ifalist.ifc[i].stats->tx_packets, ifalist.ifc[i].stats->rx_packets,
+            ifalist.ifc[i].stats->tx_bytes, ifalist.ifc[i].stats->rx_bytes);
+        }
+        printf("}\n");
+    }
+}
+
+void wrc_print_ifa(const wrc_ifc_list ifalist, size_t idx) {
+    int i = idx;
+    if (!(ifalist.len < idx)) {
+        printf("\nifalist.ifc[%d] = (wrc_ifc) {\n", i);
+        printf("\t.name = %s\n", ifalist.ifc[i].name);
+        printf("\t.family = %d\n", ifalist.ifc[i].family);
+        if (ifalist.ifc[i].is_inet4) {
+            printf("\t.addr = %s\n", ifalist.ifc[i].addr);
+            printf("\t.netmask = %s\n", ifalist.ifc[i].netmask);
+        }
+        if (ifalist.ifc[i].is_inet6) {
+            printf("\t.addr6 = %s\n", ifalist.ifc[i].addr6);
+            printf("\t.netmask6 = %s\n", ifalist.ifc[i].netmask6);
+        }
+        if (ifalist.ifc[i].is_stats) {
             printf("\t.stats->tx_packets = %10u\n\t.stats->rx_packets = %10u\n"
             "\t.stats->ttx_bytes = %10u\n\t.stats->rx_bytes = %10u\n",
             ifalist.ifc[i].stats->tx_packets, ifalist.ifc[i].stats->rx_packets,
